@@ -1,14 +1,9 @@
 import { View, Text } from 'react-native';
 
-/**
- * Home / Dashboard screen — placeholder.
- * Full implementation comes in a later prompt.
- */
-export default function HomeScreen() {
+export default function Home() {
   return (
-    <View className="flex-1 items-center justify-center bg-background">
-      <Text className="text-textPrimary text-2xl font-semibold">Home</Text>
-      <Text className="text-textSecondary text-base mt-2">Dashboard — coming soon</Text>
+    <View className="flex-1 bg-background items-center justify-center">
+      <Text className="text-textPrimary">Home dashboard coming soon</Text>
     </View>
   );
 }

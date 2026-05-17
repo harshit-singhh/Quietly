@@ -9,5 +9,3 @@ export const Colors = {
   danger: '#EF4444',
   success: '#22C55E',
 } as const;
-
-export type ColorKey = keyof typeof Colors;

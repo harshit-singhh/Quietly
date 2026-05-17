@@ -9,14 +9,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: Colors.card,
           borderTopColor: Colors.border,
-          borderTopWidth: 1,
         },
         tabBarActiveTintColor: Colors.accent,
         tabBarInactiveTintColor: Colors.textSecondary,
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
-        },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home' }} />

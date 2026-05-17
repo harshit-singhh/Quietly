@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import '../global.css';
+import { Slot, useRouter, useSegments } from 'expo-router';
 import { useSession } from '@/hooks/useSession';
+import { View, ActivityIndicator } from 'react-native';
+import { Colors } from '@/constants/colors';
+import '../global.css';
 
-export default function RootLayout() {
+function AuthGuard() {
   const { session, loading } = useSession();
   const segments = useSegments();
   const router = useRouter();
@@ -21,10 +22,22 @@ export default function RootLayout() {
     }
   }, [session, loading, segments]);
 
-  return (
-    <>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }} />
-    </>
-  );
+  if (loading) {
+    return (
+      <View style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: Colors.background,
+      }}>
+        <ActivityIndicator color={Colors.accent} size="large" />
+      </View>
+    );
+  }
+
+  return <Slot />;
+}
+
+export default function RootLayout() {
+  return <AuthGuard />;
 }

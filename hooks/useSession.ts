@@ -2,12 +2,7 @@ import { useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-interface UseSessionReturn {
-  session: Session | null;
-  loading: boolean;
-}
-
-export function useSession(): UseSessionReturn {
+export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
