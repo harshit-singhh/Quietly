@@ -1,0 +1,32 @@
+# Environment variables — never commit these
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Expo
+.expo/
+dist/
+node_modules/
+
+# OS
+.DS_Store
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+*.DS_Store
