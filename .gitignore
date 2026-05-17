@@ -4,6 +4,9 @@
 .env.*.local
 .env.production
 
+# Edge function local env files — contain secret keys
+supabase/functions/**/.env
+
 # Expo
 .expo/
 dist/
