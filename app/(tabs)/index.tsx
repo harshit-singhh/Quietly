@@ -53,7 +53,7 @@ export default function HomeScreen() {
     isPanicOpen, setIsPanicOpen,
     isMemoryPanelOpen, setIsMemoryPanelOpen,
     loadSessions, loadMemories,
-    deleteMemory, clearAllMemories, deleteSession,
+    deleteMemory, clearAllMemories, deleteSession, signOut,
   } = useDashboard();
 
   const greeting = `${getGreeting()}, ${profile?.display_name ?? 'there'} 👋`;
@@ -129,7 +129,7 @@ export default function HomeScreen() {
               renderItem={({ item }) => (
                 <SessionCard
                   session={item}
-                  onPress={() => router.push({ pathname: '/(tabs)/chat', params: { sessionId: item.id } })}
+                  onPress={() => router.push({ pathname: '/(tabs)/chat', params: { session_id: item.id } })}
                   onDelete={() => deleteSession(item.id)}
                 />
               )}
@@ -153,6 +153,7 @@ export default function HomeScreen() {
         onDeleteMemory={deleteMemory}
         onClearAll={clearAllMemories}
         onClose={() => setIsMemoryPanelOpen(false)}
+        signOut={signOut}
       />
     </SafeAreaView>
   );

@@ -1,184 +1,334 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, SafeAreaView, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Animated as RNAnimated,
+  Modal,
+  Platform,
+  SafeAreaView,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { BlurView } from 'expo-blur';
 import Animated, {
-  cancelAnimation,
+  Easing,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { Colors } from '@/constants/colors';
 
+const GROUNDING_STEPS = [
+  {
+    count: 5,
+    sense: 'things you can SEE',
+    instruction: 'Look around slowly. Name them in your head.',
+    color: '#6366F1',
+  },
+  {
+    count: 4,
+    sense: 'things you can TOUCH',
+    instruction: 'Feel the texture. Notice the temperature.',
+    color: '#8B5CF6',
+  },
+  {
+    count: 3,
+    sense: 'things you can HEAR',
+    instruction: 'Listen past the obvious sounds.',
+    color: '#A78BFA',
+  },
+  {
+    count: 2,
+    sense: 'things you can SMELL',
+    instruction: 'Take a slow breath through your nose.',
+    color: '#C4B5FD',
+  },
+  {
+    count: 1,
+    sense: 'thing you can TASTE',
+    instruction: 'Notice what is already there.',
+    color: '#DDD6FE',
+  },
+];
+
 interface PanicOverlayProps {
   isVisible: boolean;
   onClose: () => void;
 }
 
-const PHASES = [
-  { text: 'Breathe in...', duration: 4000 },
-  { text: 'Hold...', duration: 2000 },
-  { text: 'Breathe out...', duration: 6000 },
-  { text: 'Rest...', duration: 2000 },
-];
-
 export function PanicOverlay({ isVisible, onClose }: PanicOverlayProps) {
-  const [phaseIndex, setPhaseIndex] = useState(0);
-  const scale = useSharedValue(0.8);
-  const glowOpacity = useSharedValue(0.3);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [breathPhase, setBreathPhase] = useState('Breathe in...');
+  const [groundingStep, setGroundingStep] = useState(0);
+  const groundingStepRef = useRef(0);
+  const stepOpacity = useRef(new RNAnimated.Value(1)).current;
+  const groundingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const breathIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const secondsRef = useRef(0);
 
+  const scale = useSharedValue(1);
+  const ringOpacity = useSharedValue(0.2);
+
+  // Ring animation starts on mount, loops indefinitely
   useEffect(() => {
-    if (!isVisible) {
-      cancelAnimation(scale);
-      cancelAnimation(glowOpacity);
-      scale.value = 0.8;
-      glowOpacity.value = 0.3;
-      setPhaseIndex(0);
-      if (timerRef.current) clearTimeout(timerRef.current);
-      return;
-    }
-
     scale.value = withRepeat(
       withSequence(
-        withTiming(1.2, { duration: 4000 }),
-        withTiming(1.2, { duration: 2000 }),
-        withTiming(0.8, { duration: 6000 }),
-        withTiming(0.8, { duration: 2000 }),
+        withTiming(1.35, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
+        withDelay(1000, withTiming(1.0, { duration: 4000, easing: Easing.inOut(Easing.ease) })),
       ),
       -1,
       false,
     );
-
-    glowOpacity.value = withRepeat(
+    ringOpacity.value = withRepeat(
       withSequence(
-        withTiming(0.8, { duration: 4000 }),
-        withTiming(0.8, { duration: 2000 }),
-        withTiming(0.2, { duration: 6000 }),
-        withTiming(0.2, { duration: 2000 }),
+        withTiming(0.5, { duration: 4000 }),
+        withDelay(1000, withTiming(0.2, { duration: 4000 })),
       ),
       -1,
       false,
     );
+  }, []);
 
-    let idx = 0;
-    function scheduleNext() {
-      timerRef.current = setTimeout(() => {
-        idx = (idx + 1) % PHASES.length;
-        setPhaseIndex(idx);
-        scheduleNext();
-      }, PHASES[idx].duration);
+  // Breathing label tracks a 9-second cycle (0-3s in, 4s hold, 5-8s out)
+  useEffect(() => {
+    if (!isVisible) {
+      if (breathIntervalRef.current) clearInterval(breathIntervalRef.current);
+      secondsRef.current = 0;
+      setBreathPhase('Breathe in...');
+      return;
     }
-    scheduleNext();
-
+    secondsRef.current = 0;
+    setBreathPhase('Breathe in...');
+    breathIntervalRef.current = setInterval(() => {
+      secondsRef.current = (secondsRef.current + 1) % 9;
+      const s = secondsRef.current;
+      if (s <= 3) setBreathPhase('Breathe in...');
+      else if (s === 4) setBreathPhase('Hold...');
+      else setBreathPhase('Breathe out...');
+    }, 1000);
     return () => {
-      cancelAnimation(scale);
-      cancelAnimation(glowOpacity);
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (breathIntervalRef.current) clearInterval(breathIntervalRef.current);
     };
   }, [isVisible]);
 
-  const ringStyle = useAnimatedStyle(() => ({
+  // Grounding auto-advances every 8 seconds, stops at step 4
+  useEffect(() => {
+    if (!isVisible) {
+      if (groundingIntervalRef.current) clearInterval(groundingIntervalRef.current);
+      return;
+    }
+    groundingIntervalRef.current = setInterval(() => {
+      if (groundingStepRef.current >= 4) {
+        if (groundingIntervalRef.current) clearInterval(groundingIntervalRef.current);
+        return;
+      }
+      RNAnimated.timing(stepOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        groundingStepRef.current = Math.min(groundingStepRef.current + 1, 4);
+        setGroundingStep(groundingStepRef.current);
+        RNAnimated.timing(stepOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 8000);
+    return () => {
+      if (groundingIntervalRef.current) clearInterval(groundingIntervalRef.current);
+    };
+  }, [isVisible]);
+
+  const outerRingStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
+    opacity: ringOpacity.value,
   }));
 
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: glowOpacity.value,
+  const middleRingStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(scale.value, [1, 1.35], [1, 1.18]) }],
   }));
 
-  return (
-    <Modal visible={isVisible} transparent animationType="fade" statusBarTranslucent>
-      <SafeAreaView
+  function handleClose() {
+    groundingStepRef.current = 0;
+    setGroundingStep(0);
+    stepOpacity.setValue(1);
+    secondsRef.current = 0;
+    setBreathPhase('Breathe in...');
+    onClose();
+  }
+
+  const step = GROUNDING_STEPS[groundingStep];
+
+  const overlayContent = (
+    <SafeAreaView style={{ flex: 1 }}>
+      {/* Dismiss button */}
+      <TouchableOpacity
+        onPress={handleClose}
         style={{
-          flex: 1,
-          backgroundColor: 'rgba(5, 5, 15, 0.97)',
+          position: 'absolute',
+          top: 56,
+          right: 20,
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: 'rgba(255,255,255,0.1)',
           alignItems: 'center',
           justifyContent: 'center',
+          zIndex: 10,
         }}
       >
-        <Text
-          style={{
-            color: Colors.textSecondary,
-            fontSize: 15,
-            letterSpacing: 1.5,
-            marginBottom: 64,
-            textTransform: 'uppercase',
-          }}
-        >
-          {PHASES[phaseIndex].text}
-        </Text>
+        <Text style={{ color: 'white', fontSize: 18 }}>✕</Text>
+      </TouchableOpacity>
 
-        <View style={{ width: 220, height: 220, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Centered content */}
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 24,
+        }}
+      >
+        {/* Three concentric breathing rings */}
+        <View style={{ width: 200, height: 200, alignItems: 'center', justifyContent: 'center' }}>
           <Animated.View
             style={[
               {
                 position: 'absolute',
-                width: 220,
-                height: 220,
-                borderRadius: 110,
-                backgroundColor: Colors.accent,
+                top: 0,
+                left: 0,
+                width: 200,
+                height: 200,
+                borderRadius: 100,
+                borderWidth: 2,
+                borderColor: Colors.accent,
+                backgroundColor: 'rgba(79, 70, 229, 0.08)',
               },
-              glowStyle,
+              outerRingStyle,
             ]}
           />
           <Animated.View
             style={[
               {
-                width: 160,
-                height: 160,
-                borderRadius: 80,
-                backgroundColor: '#0D0B1E',
-                borderWidth: 2,
-                borderColor: Colors.accent,
-                alignItems: 'center',
-                justifyContent: 'center',
+                position: 'absolute',
+                top: 25,
+                left: 25,
+                width: 150,
+                height: 150,
+                borderRadius: 75,
+                borderWidth: 1.5,
+                borderColor: Colors.accentLight,
+                backgroundColor: 'rgba(99, 102, 241, 0.12)',
               },
-              ringStyle,
+              middleRingStyle,
             ]}
-          >
-            <Text style={{ fontSize: 44, color: Colors.accent }}>◎</Text>
-          </Animated.View>
+          />
+          <View
+            style={{
+              width: 90,
+              height: 90,
+              borderRadius: 45,
+              backgroundColor: Colors.accent,
+              opacity: 0.9,
+            }}
+          />
         </View>
 
+        {/* Breathing phase label */}
         <Text
           style={{
-            color: Colors.textPrimary,
-            fontSize: 20,
-            fontWeight: '700',
-            marginTop: 64,
+            color: 'white',
+            fontSize: 22,
+            fontWeight: '300',
             textAlign: 'center',
+            letterSpacing: 1,
+            marginTop: 40,
           }}
         >
-          You're safe.
-        </Text>
-        <Text
-          style={{
-            color: Colors.textSecondary,
-            fontSize: 14,
-            marginTop: 10,
-            textAlign: 'center',
-            lineHeight: 22,
-            paddingHorizontal: 48,
-          }}
-        >
-          Follow the circle.{'\n'}Let your breath guide you back.
+          {breathPhase}
         </Text>
 
-        <TouchableOpacity
-          onPress={onClose}
-          activeOpacity={0.7}
-          style={{
-            marginTop: 56,
-            paddingHorizontal: 36,
-            paddingVertical: 14,
-            borderRadius: 32,
-            borderWidth: 1,
-            borderColor: Colors.border,
-          }}
+        {/* Grounding guide — fades between steps */}
+        <RNAnimated.View
+          style={{ opacity: stepOpacity, alignItems: 'center', marginTop: 32 }}
         >
-          <Text style={{ color: Colors.textSecondary, fontSize: 15 }}>I'm okay now</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+          <Text
+            style={{
+              fontSize: 72,
+              fontWeight: '800',
+              color: step.color,
+              lineHeight: 80,
+              textAlign: 'center',
+            }}
+          >
+            {step.count}
+          </Text>
+          <Text
+            style={{
+              fontSize: 18,
+              color: 'white',
+              fontWeight: '500',
+              textAlign: 'center',
+              marginTop: 4,
+            }}
+          >
+            {step.sense}
+          </Text>
+          <Text
+            style={{
+              fontSize: 14,
+              color: 'rgba(255,255,255,0.6)',
+              textAlign: 'center',
+              marginTop: 6,
+              lineHeight: 20,
+            }}
+          >
+            {step.instruction}
+          </Text>
+
+          {/* Progress dots */}
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: 8,
+              marginTop: 20,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {GROUNDING_STEPS.map((_, i) => (
+              <View
+                key={i}
+                style={{
+                  width: i === groundingStep ? 8 : 6,
+                  height: i === groundingStep ? 8 : 6,
+                  borderRadius: i === groundingStep ? 4 : 3,
+                  backgroundColor:
+                    i === groundingStep ? 'white' : 'rgba(255,255,255,0.3)',
+                }}
+              />
+            ))}
+          </View>
+        </RNAnimated.View>
+      </View>
+    </SafeAreaView>
+  );
+
+  return (
+    <Modal visible={isVisible} transparent animationType="fade" statusBarTranslucent>
+      {Platform.OS === 'android' ? (
+        <View style={{ flex: 1, backgroundColor: 'rgba(10, 10, 20, 0.95)' }}>
+          {overlayContent}
+        </View>
+      ) : (
+        <BlurView intensity={90} tint="dark" style={{ flex: 1 }}>
+          {overlayContent}
+        </BlurView>
+      )}
     </Modal>
   );
 }
