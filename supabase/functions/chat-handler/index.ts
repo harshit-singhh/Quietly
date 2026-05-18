@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { handleCors } from '../_shared/cors.ts'
 import { errorResponse, successResponse } from '../_shared/errors.ts'
-import { openAIChatCompletion, type ChatMessage } from '../_shared/openai.ts'
+import { aiChat, type AIMessage } from '../_shared/gemini.ts'
 
 // Supabase Edge Runtime global — not in standard Deno types
 declare const EdgeRuntime: { waitUntil: (promise: Promise<void>) => void }
@@ -11,13 +11,13 @@ declare const EdgeRuntime: { waitUntil: (promise: Promise<void>) => void }
 function getEnvVars() {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  const openAIKey = Deno.env.get('OPENAI_API_KEY')
+  const geminiKey = Deno.env.get('GEMINI_API_KEY')
 
-  if (!supabaseUrl || !serviceRoleKey || !openAIKey) {
+  if (!supabaseUrl || !serviceRoleKey || !geminiKey) {
     throw new Error('Missing required environment variables')
   }
 
-  return { supabaseUrl, serviceRoleKey, openAIKey }
+  return { supabaseUrl, serviceRoleKey }
 }
 
 // ─── Main handler ────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
 
   try {
 
-    // STEP 2: ENV VARS
+    // STEP 2: ENV VARS — fail fast if anything is missing
     const { supabaseUrl, serviceRoleKey } = getEnvVars()
 
     // STEP 3: AUTHENTICATION
@@ -112,7 +112,7 @@ Deno.serve(async (req: Request) => {
       return errorResponse('Failed to load conversation history', 500)
     }
 
-    // Reverse to chronological order for OpenAI
+    // Reverse to chronological order for the AI
     const chronologicalMessages = (recentMessages ?? []).reverse()
 
     // 6b. Up to 20 memories for long-term context
@@ -150,9 +150,10 @@ ${memoryText}
 
 Current date and time: ${new Date().toISOString()}`
 
-    // STEP 8: BUILD MESSAGES ARRAY FOR OPENAI
-    const openAIMessages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
+    // STEP 8: BUILD CONVERSATION ARRAY
+    // NOTE: system prompt is passed separately to aiChat() — NOT in this array.
+    // Gemini uses system_instruction for the system prompt, not a 'system' role message.
+    const conversationMessages: AIMessage[] = [
       ...chronologicalMessages.map((msg: { role: string; content: string }) => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content,
@@ -160,17 +161,16 @@ Current date and time: ${new Date().toISOString()}`
       { role: 'user', content: content.trim() },
     ]
 
-    // STEP 9: CALL OPENAI
+    // STEP 9: CALL AI
     let replyText: string
     try {
-      replyText = await openAIChatCompletion({
-        messages: openAIMessages,
-        model: 'gpt-4o-mini',
-        maxTokens: 300,
-        temperature: 0.75,
-      })
-    } catch (openAIError) {
-      console.error('OpenAI call failed:', openAIError)
+      replyText = await aiChat(
+        conversationMessages,
+        systemPrompt,         // ← second arg, NOT inside the messages array
+        { maxTokens: 300, temperature: 0.75 },
+      )
+    } catch (aiError) {
+      console.error('AI call failed:', aiError)
       return errorResponse(
         'AI service temporarily unavailable. Please try again.',
         503,
@@ -255,7 +255,9 @@ async function extractAndSaveMemories(params: {
       .map((m) => `${m.role === 'user' ? 'User' : 'Quietly'}: ${m.content}`)
       .join('\n')
 
-    const extractionPrompt = `Analyze this conversation excerpt and extract 0-2 NEW factual insights about the USER ONLY (not about Quietly or the AI).
+    // System prompt contains the extraction rules.
+    // The conversation text is passed as the user message.
+    const extractionSystemPrompt = `Analyze the conversation excerpt provided by the user and extract 0-2 NEW factual insights about the USER ONLY (not about the AI).
 
 Rules:
 - Only extract clear, specific facts (name, job, hobby, relationship status, specific fear, specific goal, etc.)
@@ -265,19 +267,15 @@ Rules:
 - Maximum 2 insights per call
 - Each insight must be a single sentence under 15 words
 
-Conversation:
-${analysisText}
-
 Return ONLY a valid JSON array of strings. No explanation. No markdown. Examples:
 ["User's name is Priya", "User works as a software engineer"]
 []`
 
-    const rawResponse = await openAIChatCompletion({
-      messages: [{ role: 'user', content: extractionPrompt }],
-      model: 'gpt-4o-mini',
-      maxTokens: 100,
-      temperature: 0.1,
-    })
+    const rawResponse = await aiChat(
+      [{ role: 'user', content: analysisText }],
+      extractionSystemPrompt,   // ← system prompt passed separately
+      { maxTokens: 100, temperature: 0.1 },
+    )
 
     let insights: string[] = []
     try {
@@ -288,7 +286,8 @@ Return ONLY a valid JSON array of strings. No explanation. No markdown. Examples
       const parsed = JSON.parse(cleaned)
       if (Array.isArray(parsed)) {
         insights = parsed.filter(
-          (item: unknown) => typeof item === 'string' && (item as string).trim().length > 0,
+          (item: unknown) =>
+            typeof item === 'string' && (item as string).trim().length > 0,
         )
       }
     } catch {
