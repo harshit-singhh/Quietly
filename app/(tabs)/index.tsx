@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
@@ -14,6 +14,7 @@ import { useDashboard } from '@/hooks/useDashboard';
 import { SessionCard } from '@/components/SessionCard';
 import { PanicOverlay } from '@/components/PanicOverlay';
 import { MemoryPanel } from '@/components/MemoryPanel';
+import { PaywallModal } from '@/components/PaywallModal';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -47,6 +48,7 @@ function SkeletonCard() {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const [showPaywall, setShowPaywall] = useState(false);
   const {
     profile, sessions, memories,
     isLoadingSessions, isLoadingMemories,
@@ -95,7 +97,16 @@ export default function HomeScreen() {
             <Text style={{ fontSize: 24 }}>💬</Text>
             <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textPrimary }}>Text Chat</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/voice')} style={{ flex: 1, backgroundColor: Colors.card, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, padding: 14, height: 80, justifyContent: 'space-between' }}>
+          <TouchableOpacity
+            onPress={() => {
+              if (!profile?.is_premium) {
+                setShowPaywall(true);
+              } else {
+                router.push('/(tabs)/voice');
+              }
+            }}
+            style={{ flex: 1, backgroundColor: Colors.card, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, padding: 14, height: 80, justifyContent: 'space-between' }}
+          >
             <Text style={{ fontSize: 24 }}>🎙️</Text>
             <View>
               <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textPrimary }}>Voice Chat</Text>
@@ -154,6 +165,15 @@ export default function HomeScreen() {
         onClearAll={clearAllMemories}
         onClose={() => setIsMemoryPanelOpen(false)}
         signOut={signOut}
+      />
+      <PaywallModal
+        isVisible={showPaywall}
+        featureName="Voice Chat"
+        onClose={() => setShowPaywall(false)}
+        onSuccess={() => {
+          setShowPaywall(false);
+          router.push('/(tabs)/voice');
+        }}
       />
     </SafeAreaView>
   );
