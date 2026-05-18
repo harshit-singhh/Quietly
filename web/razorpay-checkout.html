@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quietly — Secure Payment</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0F1117;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .container {
+      text-align: center;
+      padding: 24px;
+    }
+
+    .icon {
+      font-size: 40px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .message {
+      color: #94A3B8;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    .error {
+      color: #EF4444;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="status">
+    <span class="icon">🔒</span>
+    <p class="message">Opening secure payment...</p>
+  </div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var key = params.get('key');
+      var subscriptionId = params.get('subscription_id');
+
+      if (!key || !subscriptionId) {
+        document.getElementById('status').innerHTML =
+          '<p class="error">Invalid payment link.</p>';
+        return;
+      }
+
+      var options = {
+        key: key,
+        subscription_id: subscriptionId,
+        name: 'Quietly',
+        description: 'Premium — ₹149/month',
+        theme: { color: '#4F46E5' },
+        handler: function (response) {
+          var successUrl =
+            'https://quietly.pro/payment-success' +
+            '?razorpay_payment_id=' + encodeURIComponent(response.razorpay_payment_id) +
+            '&razorpay_subscription_id=' + encodeURIComponent(response.razorpay_subscription_id) +
+            '&razorpay_signature=' + encodeURIComponent(response.razorpay_signature);
+          window.location.href = successUrl;
+        },
+        modal: {
+          ondismiss: function () {
+            window.location.href = 'https://quietly.pro/payment-cancelled';
+          }
+        }
+      };
+
+      var rzp = new Razorpay(options);
+      rzp.open();
+    })();
+  </script>
+</body>
+</html>
